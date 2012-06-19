@@ -49,23 +49,50 @@ def repack_compiler(root, top, version):
     LOG.info("Creating compiler archive...")
 
     package_name = "thrift-compiler_%s" % version
-    sub_dir = "compiler"
+    sub_dir = os.path.join("compiler", "cpp")
 
     copy_legal_bits(
             os.path.join(root, top),
             os.path.join(root, top, sub_dir))
 
-    shutil.copy(
-            os.path.join(root, top, "README"),
-            os.path.join(root, top, sub_dir, "README.Thrift"))
+    files = [
+        ( "configure.ac" ,"configure.ac" ),
+        ( "bootstrap.sh" ,"bootstrap.sh" ),
+        ( "cleanup.sh", "cleanup.sh" ),
+        ( "README", "README.Thrift" ),
+        ( "aclocal", "aclocal" )
+            ]
 
-    archive = tarfile.open(
-            os.path.join(OUTPUT, "%s.orig.tar.gz" % package_name),
-            "w:gz")
-    archive.add(
+    for src, target in files:
+        f_src = os.path.join(root, top, src)
+        f_target = os.path.join(root, top, sub_dir, target)
+        if os.path.isdir(f_src):
+            shutil.copytree(f_src, f_target)
+        else:
+            shutil.copy(f_src, f_target)
+
+    # Strip surplus CONFIG_FILES from configure.ac
+    with open(os.path.join(root, top, sub_dir, "configure.ac"), "r") as configure_ac:
+        lines = configure_ac.readlines()
+    with open(os.path.join(root, top, sub_dir, "configure.ac"), "w") as configure_ac:
+        skip_next=False
+        for line in lines:
+            if "AC_CONFIG_FILES" in line:
+                configure_ac.write(line)
+                configure_ac.write("  Makefile\n")
+                configure_ac.write("  version.h\n")
+                skip_next=True
+            elif skip_next and "])" in line:
+                skip_next=False
+                configure_ac.write(line)
+            elif not skip_next:
+                configure_ac.write(line)
+
+    with tarfile.open(os.path.join(OUTPUT, "%s.orig.tar.gz" % package_name),
+                      "w:gz") as archive:
+        archive.add(
             os.path.join(root, top, sub_dir),
             arcname=package_name)
-    archive.close()
 
     LOG.info("Created compiler archive %s.orig.tar.gz", package_name)
 
